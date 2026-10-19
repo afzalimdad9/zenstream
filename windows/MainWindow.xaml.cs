@@ -19,10 +19,38 @@ public sealed partial class MainWindow : Window
     private AudioDeviceInputNode? _microphoneInput;
     private AudioFrameOutputNode? _audioFrameOutput;
     private bool _isRecording;
+    private bool _isStartingRecording;
     private bool _audioGraphPausedForRecording;
+    private bool _isPortrait;
     private string? _recordingFilePath;
 
-    public MainWindow() => InitializeComponent();
+    public MainWindow()
+    {
+        InitializeComponent();
+        SetCanvasOrientation(portrait: false);
+    }
+
+    private void HorizontalButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetCanvasOrientation(portrait: false);
+    }
+
+    private void VerticalButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetCanvasOrientation(portrait: true);
+    }
+
+    private void SetCanvasOrientation(bool portrait)
+    {
+        _isPortrait = portrait;
+        CameraPreviewCanvas.Width = portrait ? 900 : 1600;
+        CameraPreviewCanvas.Height = portrait ? 1600 : 900;
+        CompositionLabel.Text = portrait
+            ? "ZenStream Studio - Vertical 9:16"
+            : "ZenStream Studio - Horizontal 16:9";
+        HorizontalButton.IsEnabled = !_isRecording && !_isStartingRecording && portrait;
+        VerticalButton.IsEnabled = !_isRecording && !_isStartingRecording && !portrait;
+    }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -145,8 +173,12 @@ public sealed partial class MainWindow : Window
         }
 
         RecordButton.IsEnabled = false;
+        _isStartingRecording = true;
+        SetCanvasOrientation(_isPortrait);
         try
         {
+            // TODO: record the Win2D-composed canvas instead of the raw camera stream.
+            AddStatus("Recording the raw camera feed; composed recording is pending.");
             var recordingsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "ZenStream",
@@ -168,14 +200,18 @@ public sealed partial class MainWindow : Window
                 file);
             _recordingFilePath = file.Path;
             _isRecording = true;
+            _isStartingRecording = false;
             StopButton.IsEnabled = true;
+            SetCanvasOrientation(_isPortrait);
             AddStatus($"Recording to {_recordingFilePath}");
         }
         catch (Exception exception)
         {
             _isRecording = false;
+            _isStartingRecording = false;
             StopButton.IsEnabled = false;
             RecordButton.IsEnabled = true;
+            SetCanvasOrientation(_isPortrait);
             ResumeMicrophoneMeter();
             AddStatus($"Recording could not start: {exception.Message}");
         }
@@ -196,6 +232,7 @@ public sealed partial class MainWindow : Window
             _isRecording = false;
             StopButton.IsEnabled = false;
             RecordButton.IsEnabled = true;
+            SetCanvasOrientation(_isPortrait);
             ResumeMicrophoneMeter();
             AddStatus($"Recording saved to {_recordingFilePath}");
         }
