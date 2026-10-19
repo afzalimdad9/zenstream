@@ -36,6 +36,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
       - name: Build debug APK
         working-directory: android
         run: |
