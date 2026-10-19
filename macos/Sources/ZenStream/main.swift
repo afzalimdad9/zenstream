@@ -85,26 +85,19 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureFileOutputRe
                 return
             }
 
-            do {
-                let directory = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Movies/ZenStream", isDirectory: true)
-                try FileManager.default.createDirectory(
-                    at: directory,
-                    withIntermediateDirectories: true,
-                    attributes: nil
-                )
-
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-                let outputURL = directory
-                    .appendingPathComponent("ZenStream-\(formatter.string(from: Date())).mov")
-                self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
-                self.updateRecordingStatus("Starting recording to \(outputURL.path)")
-            } catch {
+            guard self.movieOutput.availableOutputFileTypes.contains(.mp4) else {
                 self.removeRecordingAudioInput()
                 self.resumeMicrophoneMeter()
-                self.updateRecordingStatus("Recording failed: \(error.localizedDescription)")
+                self.updateRecordingStatus("Recording unavailable: MP4 output is not supported")
+                return
             }
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
+            let outputURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ZenStream-\(formatter.string(from: Date())).mp4")
+            self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+            self.updateRecordingStatus("Starting recording to \(outputURL.path)")
         }
     }
 
