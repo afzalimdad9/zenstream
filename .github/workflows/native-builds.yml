@@ -70,25 +70,20 @@ jobs:
             macos/.build/
             ios/DerivedData/Build/Products/Debug-iphonesimulator/ZenStream.app/
 
-  windows:
+    windows:
     name: Windows (WinUI 3 / .NET)
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure Visual Studio MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
 
       - name: Build Windows project
-        shell: pwsh
-        run: |
-          msbuild windows/ZenStream.csproj `
-            /restore `
-            /p:Configuration=Release `
-            /p:EnableWindowsTargeting=true
+        run: dotnet build windows/ZenStream.csproj -p:EnableWindowsTargeting=true -c Release
 
-      - name: Upload Windows build output
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: zenstream-windows
           path: windows/bin/Release/
