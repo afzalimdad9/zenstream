@@ -4,15 +4,27 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Rational
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraEffect
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.ViewPort
+import androidx.camera.effects.OverlayEffect
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
@@ -35,6 +47,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.log10
 import kotlin.math.max
+import kotlin.math.min
 
 data class RecordingStatus(
     val isStarting: Boolean = false,
@@ -53,6 +66,11 @@ class CameraCaptureService(
     private var audioRecord: AudioRecord? = null
     private var videoCapture: VideoCapture<Recorder>? = null
     private var activeRecording: Recording? = null
+    private var previewView: PreviewView? = null
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var overlayEffect: OverlayEffect? = null
+    private var overlayHandlerThread: HandlerThread? = null
+    @Volatile private var isPortrait = false
     private var isStopped = false
 
     private val _micLevel = MutableStateFlow(0f)
@@ -69,8 +87,24 @@ class CameraCaptureService(
 
     fun start(previewView: PreviewView) {
         isStopped = false
+        this.previewView = previewView
         startCamera(previewView)
         startMicMeter()
+    }
+
+    fun setPortrait(portrait: Boolean) {
+        if (isPortrait == portrait ||
+            _recordingStatus.value.isStarting ||
+            _recordingStatus.value.isRecording
+        ) {
+            return
+        }
+        isPortrait = portrait
+        _cameraReady.value = false
+        videoCapture = null
+        val provider = cameraProvider ?: return
+        val currentPreview = previewView ?: return
+        bindCamera(provider, currentPreview)
     }
 
     fun stop() {
@@ -80,6 +114,12 @@ class CameraCaptureService(
         stopMicMeter()
         _cameraReady.value = false
         ProcessCameraProvider.getInstance(context).get().unbindAll()
+        overlayEffect?.close()
+        overlayEffect = null
+        overlayHandlerThread?.quitSafely()
+        overlayHandlerThread = null
+        cameraProvider = null
+        previewView = null
     }
 
     fun startRecording() {
@@ -193,30 +233,108 @@ class CameraCaptureService(
             if (isStopped) return@addListener
             try {
                 val provider = providerFuture.get()
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-                val recorder = Recorder.Builder()
-                    .setQualitySelector(QualitySelector.from(Quality.HD))
-                    .build()
-                val capture = VideoCapture.withOutput(recorder)
-
-                provider.unbindAll()
-                provider.bindToLifecycle(
-                    lifecycleOwner,
-                    CameraSelector.DEFAULT_FRONT_CAMERA,
-                    preview,
-                    capture,
-                )
-                videoCapture = capture
-                _cameraReady.value = true
-                _cameraError.value = null
+                cameraProvider = provider
+                bindCamera(provider, previewView)
             } catch (exception: Exception) {
                 videoCapture = null
                 _cameraReady.value = false
                 _cameraError.value = "Camera unavailable: ${exception.localizedMessage}"
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    private fun bindCamera(provider: ProcessCameraProvider, previewView: PreviewView) {
+        try {
+            val rotation = previewView.display?.rotation ?: android.view.Surface.ROTATION_0
+            val preview = Preview.Builder()
+                .setTargetRotation(rotation)
+                .build()
+                .also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+            val recorder = Recorder.Builder()
+                .setQualitySelector(QualitySelector.from(Quality.HD))
+                .build()
+            val capture = VideoCapture.withOutput(recorder)
+                .also { it.targetRotation = rotation }
+            val aspectRatio = if (isPortrait) Rational(9, 16) else Rational(16, 9)
+            val viewPort = ViewPort.Builder(aspectRatio, rotation)
+                .setScaleType(ViewPort.FILL_CENTER)
+                .build()
+            val useCaseGroup = UseCaseGroup.Builder()
+                .setViewPort(viewPort)
+                .addUseCase(preview)
+                .addUseCase(capture)
+                .addEffect(getOverlayEffect())
+                .build()
+
+            provider.unbindAll()
+            provider.bindToLifecycle(
+                lifecycleOwner,
+                CameraSelector.DEFAULT_FRONT_CAMERA,
+                useCaseGroup,
+            )
+            videoCapture = capture
+            _cameraReady.value = true
+            _cameraError.value = null
+        } catch (exception: Exception) {
+            videoCapture = null
+            _cameraReady.value = false
+            _cameraError.value = "Camera unavailable: ${exception.localizedMessage}"
+        }
+    }
+
+    private fun getOverlayEffect(): OverlayEffect {
+        overlayEffect?.let { return it }
+        val handlerThread = HandlerThread("ZenStreamOverlay").apply { start() }
+        return try {
+            OverlayEffect(
+                CameraEffect.PREVIEW or CameraEffect.VIDEO_CAPTURE,
+                0,
+                Handler(handlerThread.looper),
+            ) { throwable ->
+                _cameraReady.value = false
+                videoCapture = null
+                _cameraError.value = "Composition unavailable: ${throwable.localizedMessage}"
+            }.also { effect ->
+                val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.argb(205, 15, 23, 42)
+                }
+                val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                }
+                effect.setOnDrawListener { frame ->
+                    val canvas: Canvas = frame.overlayCanvas
+                    val crop = frame.cropRect
+                    val padding = min(crop.width(), crop.height()) * 0.035f
+                    textPaint.textSize = min(crop.width(), crop.height()) * 0.055f
+                    val label = if (isPortrait) {
+                        "ZenStream Studio - VERTICAL"
+                    } else {
+                        "ZenStream Studio - HORIZONTAL"
+                    }
+                    val textWidth = textPaint.measureText(label)
+                    val textHeight = textPaint.textSize
+                    val left = crop.left + padding
+                    val top = crop.top + padding
+                    val badge = RectF(
+                        left,
+                        top,
+                        left + textWidth + padding * 2,
+                        top + textHeight + padding * 2,
+                    )
+                    canvas.drawRoundRect(badge, padding, padding, backgroundPaint)
+                    canvas.drawText(label, left + padding, top + padding + textHeight, textPaint)
+                    true
+                }
+                overlayEffect = effect
+                overlayHandlerThread = handlerThread
+            }
+        } catch (exception: Exception) {
+            handlerThread.quitSafely()
+            throw exception
+        }
     }
 
     private fun stopMicMeter() {

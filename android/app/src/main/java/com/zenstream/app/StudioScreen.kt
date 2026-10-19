@@ -21,6 +21,8 @@ fun StudioScreen(
     val cameraReady by captureService.cameraReady.collectAsState()
     val cameraError by captureService.cameraError.collectAsState()
     val recording by captureService.recordingStatus.collectAsState()
+    var portrait by remember { mutableStateOf(false) }
+    val isRecording = recording.isStarting || recording.isRecording
 
     DisposableEffect(captureService) {
         onDispose { captureService.stop() }
@@ -32,20 +34,53 @@ fun StudioScreen(
     ) {
         Text("ZenStream Studio", fontSize = 26.sp, style = MaterialTheme.typography.headlineMedium)
 
-        AndroidView(
-            factory = { ctx ->
-                PreviewView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    )
-                    captureService.start(this)
-                }
-            },
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = !portrait,
+                onClick = {
+                    portrait = false
+                    captureService.setPortrait(false)
+                },
+                enabled = !isRecording,
+                label = { Text("Horizontal 16:9") },
+            )
+            FilterChip(
+                selected = portrait,
+                onClick = {
+                    portrait = true
+                    captureService.setPortrait(true)
+                },
+                enabled = !isRecording,
+                label = { Text("Vertical 9:16") },
+            )
+        }
+
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            val aspectRatio = if (portrait) 9f / 16f else 16f / 9f
+            val previewModifier = if (maxWidth / maxHeight >= aspectRatio) {
+                Modifier.height(maxHeight).aspectRatio(aspectRatio)
+            } else {
+                Modifier.width(maxWidth).aspectRatio(aspectRatio)
+            }
+            AndroidView(
+                factory = { ctx ->
+                    PreviewView(ctx).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
+                        scaleType = PreviewView.ScaleType.FILL_CENTER
+                        captureService.start(this)
+                    }
+                },
+                modifier = previewModifier,
+            )
+        }
 
         Text("Mic level", fontSize = 14.sp)
         LinearProgressIndicator(
