@@ -6,18 +6,20 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 class MainActivity : ComponentActivity() {
 
     private val permissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* result used to gate capture below */ }
+    ) { /* gating happens in StudioHost; see note below */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,8 +36,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    // A tiny placeholder StateFlow keeps StudioScreen independent
-                    // of whether the service was already created.
                     StudioHost()
                 }
             }
@@ -45,9 +45,17 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun StudioHost() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val service = remember { CameraCaptureService(context, lifecycleOwner, scope) }
-    StudioScreen(service.micLevel)
+
+    // Single service instance, scoped to the composition.
+    val service = remember(lifecycleOwner) {
+        CameraCaptureService(context, lifecycleOwner, scope)
+    }
+
+    StudioScreen(
+        captureService = service,
+        micLevel = service.micLevel,
+    )
 }

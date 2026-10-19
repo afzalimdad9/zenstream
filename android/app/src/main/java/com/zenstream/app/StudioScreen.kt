@@ -10,23 +10,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.flow.StateFlow
 
 @Composable
-fun StudioScreen(micLevel: StateFlow<Float>) {
-    val lifecycleOwner = LocalLifecycleOwner.current
+fun StudioScreen(
+    captureService: CameraCaptureService,
+    micLevel: StateFlow<Float>,
+) {
     val level by micLevel.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
 
-    val captureService = remember {
-        CameraCaptureService(context, lifecycleOwner, rememberCoroutineScope())
-    }
-    DisposableEffect(Unit) {
+    DisposableEffect(captureService) {
         onDispose { captureService.stop() }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Text("ZenStream Studio", fontSize = 26.sp, style = MaterialTheme.typography.headlineMedium)
 
         AndroidView(
