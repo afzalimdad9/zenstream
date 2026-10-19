@@ -5,7 +5,9 @@ using Windows.Media.Audio;
 using Windows.Media.Capture;
 using Windows.Media.Capture.Frames;
 using Windows.Media.Core;
+using Windows.Media.MediaProperties;
 using Windows.Media.Render;
+using Windows.Storage;
 
 namespace ZenStream;
 
@@ -16,6 +18,9 @@ public sealed partial class MainWindow : Window
     private AudioGraph? _audioGraph;
     private AudioDeviceInputNode? _microphoneInput;
     private AudioFrameOutputNode? _audioFrameOutput;
+    private bool _isRecording;
+    private bool _audioGraphPausedForRecording;
+    private string? _recordingFilePath;
 
     public MainWindow() => InitializeComponent();
 
@@ -57,7 +62,7 @@ public sealed partial class MainWindow : Window
             await camera.InitializeAsync(new MediaCaptureInitializationSettings
             {
                 SourceGroup = sourceGroup,
-                StreamingCaptureMode = StreamingCaptureMode.Video,
+                StreamingCaptureMode = StreamingCaptureMode.AudioAndVideo,
                 SharingMode = MediaCaptureSharingMode.SharedReadOnly,
                 MemoryPreference = MediaCaptureMemoryPreference.Cpu,
             });
@@ -73,6 +78,7 @@ public sealed partial class MainWindow : Window
         _mediaCapture = camera;
         _cameraSource = MediaSource.CreateFromMediaFrameSource(camera.FrameSources[sourceInfo.Id]);
         CameraPreview.Source = _cameraSource;
+        RecordButton.IsEnabled = true;
     }
 
     private async Task StartMicrophoneMeterAsync()
@@ -129,8 +135,94 @@ public sealed partial class MainWindow : Window
             : $"{StatusText.Text}{Environment.NewLine}{message}";
     }
 
-    private void Window_Closed(object sender, WindowEventArgs args)
+    private async void RecordButton_Click(object sender, RoutedEventArgs e)
     {
+        var mediaCapture = _mediaCapture;
+        if (mediaCapture is null)
+        {
+            AddStatus("Camera capture is not available.");
+            return;
+        }
+
+        RecordButton.IsEnabled = false;
+        try
+        {
+            var recordingsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ZenStream",
+                "Recordings");
+            Directory.CreateDirectory(recordingsPath);
+            var folder = await StorageFolder.GetFolderFromPathAsync(recordingsPath);
+            var file = await folder.CreateFileAsync(
+                $"ZenStream-{DateTime.UtcNow:yyyyMMdd-HHmmss}.mp4",
+                CreationCollisionOption.GenerateUniqueName);
+
+            if (_audioGraph is not null)
+            {
+                _audioGraph.Stop();
+                _audioGraphPausedForRecording = true;
+            }
+
+            await mediaCapture.StartRecordToStorageFileAsync(
+                MediaEncodingProfile.CreateMp4(VideoEncodingQuality.Auto),
+                file);
+            _recordingFilePath = file.Path;
+            _isRecording = true;
+            StopButton.IsEnabled = true;
+            AddStatus($"Recording to {_recordingFilePath}");
+        }
+        catch (Exception exception)
+        {
+            _isRecording = false;
+            StopButton.IsEnabled = false;
+            RecordButton.IsEnabled = true;
+            ResumeMicrophoneMeter();
+            AddStatus($"Recording could not start: {exception.Message}");
+        }
+    }
+
+    private async void StopButton_Click(object sender, RoutedEventArgs e)
+    {
+        await StopRecordingAsync();
+    }
+
+    private async Task StopRecordingAsync()
+    {
+        if (!_isRecording || _mediaCapture is null) return;
+
+        try
+        {
+            await _mediaCapture.StopRecordAsync();
+            _isRecording = false;
+            StopButton.IsEnabled = false;
+            RecordButton.IsEnabled = true;
+            ResumeMicrophoneMeter();
+            AddStatus($"Recording saved to {_recordingFilePath}");
+        }
+        catch (Exception exception)
+        {
+            AddStatus($"Recording could not stop cleanly: {exception.Message}");
+        }
+    }
+
+    private void ResumeMicrophoneMeter()
+    {
+        if (!_audioGraphPausedForRecording || _audioGraph is null) return;
+
+        try
+        {
+            _audioGraph.Start();
+            _audioGraphPausedForRecording = false;
+        }
+        catch (Exception exception)
+        {
+            AddStatus($"Microphone meter could not resume: {exception.Message}");
+        }
+    }
+
+    private async void Window_Closed(object sender, WindowEventArgs args)
+    {
+        await StopRecordingAsync();
         CameraPreview.Source = null;
         _cameraSource?.Dispose();
         _mediaCapture?.Dispose();

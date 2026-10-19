@@ -32,6 +32,18 @@
                 Maximum="1"
                 Value="0" />
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button
+                    x:Name="RecordButton"
+                    Content="Record"
+                    IsEnabled="False"
+                    Click="RecordButton_Click" />
+                <Button
+                    x:Name="StopButton"
+                    Content="Stop"
+                    IsEnabled="False"
+                    Click="StopButton_Click" />
+            </StackPanel>
         </StackPanel>
     </Grid>
 </Window>
