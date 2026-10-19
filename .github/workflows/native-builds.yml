@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Qt
-        run: sudo apt-get update && sudo apt-get install -y qt6-base-dev cmake ninja-build
+        run: sudo apt-get update && sudo apt-get install -y qt6-base-dev qt6-multimedia-dev cmake ninja-build
       - name: Configure
         run: cmake -S linux -B linux/build -G Ninja
       - name: Build
