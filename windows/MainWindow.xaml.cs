@@ -44,7 +44,7 @@ public sealed partial class MainWindow : Window
     {
         var sourceGroups = await MediaFrameSourceGroup.FindAllAsync();
         var sourceGroup = sourceGroups.FirstOrDefault(group =>
-            group.SourceInfos.Any(sourceInfo => sourceInfo.Kind == MediaFrameSourceKind.VideoPreview));
+            group.SourceInfos.Any(sourceInfo => sourceInfo.SourceKind == MediaFrameSourceKind.Color));
         if (sourceGroup is null)
         {
             AddStatus("No camera device was found.");
@@ -69,7 +69,7 @@ public sealed partial class MainWindow : Window
         }
 
         var sourceInfo = sourceGroup.SourceInfos.First(sourceInfo =>
-            sourceInfo.Kind == MediaFrameSourceKind.VideoPreview);
+            sourceInfo.SourceKind == MediaFrameSourceKind.Color);
         _mediaCapture = camera;
         _cameraSource = MediaSource.CreateFromMediaFrameSource(camera.FrameSources[sourceInfo.Id]);
         CameraPreview.Source = _cameraSource;
