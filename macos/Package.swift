@@ -14,7 +14,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ZenStream",
-            resources: [.copy("Info.plist")],
+            exclude: ["Info.plist"],
             linkerSettings: [
                 .unsafeFlags(
                     [
