@@ -1,0 +1,28 @@
+package com.zenstream.app
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme {
+                Surface(Modifier.fillMaxSize()) {
+                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text("ZenStream Studio", fontSize = 28.sp)
+                        Text("Native Android starter")
+                        Text("Next: camera and microphone capture, scene layouts, local recording, and streaming output.")
+                        Button(onClick = { }) { Text("Create studio (coming soon)") }
+                    }
+                }
+            }
+        }
+    }
+}

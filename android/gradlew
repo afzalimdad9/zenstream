@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Minimal bootstrap wrapper. GitHub Actions downloads Gradle when needed.
+exec gradle "$@"
