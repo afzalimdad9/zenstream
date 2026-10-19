@@ -18,6 +18,9 @@ fun StudioScreen(
     micLevel: StateFlow<Float>,
 ) {
     val level by micLevel.collectAsState()
+    val cameraReady by captureService.cameraReady.collectAsState()
+    val cameraError by captureService.cameraError.collectAsState()
+    val recording by captureService.recordingStatus.collectAsState()
 
     DisposableEffect(captureService) {
         onDispose { captureService.stop() }
@@ -50,8 +53,27 @@ fun StudioScreen(
             modifier = Modifier.fillMaxWidth().height(12.dp),
         )
 
+        cameraError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        recording.errorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error)
+        }
+        if (recording.savedUri != null) {
+            Text("Saved recording to Movies/ZenStream")
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { }, enabled = false) { Text("Record (next milestone)") }
+            Button(
+                onClick = captureService::startRecording,
+                enabled = cameraReady && !recording.isStarting && !recording.isRecording,
+            ) {
+                Text(if (recording.isStarting) "Preparing..." else "Record")
+            }
+            OutlinedButton(
+                onClick = captureService::stopRecording,
+                enabled = recording.isRecording,
+            ) {
+                Text("Stop")
+            }
             OutlinedButton(onClick = { }, enabled = false) { Text("Stream (later)") }
         }
     }

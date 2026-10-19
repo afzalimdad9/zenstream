@@ -12,7 +12,9 @@ A native multi-platform starter for a Vidyst-style live production studio.
 ## Current scope
 The first capture milestone adds a live camera preview and microphone-level meter to all five native apps. Android waits for both camera and microphone permissions before mounting the studio.
 
-This is not yet a full streaming product: scene composition, local recording, encoding, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
+Android now also records camera and microphone output to `Movies/ZenStream`. Recording support on the other platforms is still pending.
+
+This is not yet a full streaming product: scene composition, cross-platform local recording, encoding, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
 
 ## Build automation
 Push to `main`, open a pull request, or run **Native builds** manually from GitHub Actions. Platform workflows run on the appropriate hosted runners and upload available build artifacts.

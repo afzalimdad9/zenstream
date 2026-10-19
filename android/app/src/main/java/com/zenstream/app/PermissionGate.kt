@@ -3,6 +3,7 @@ package com.zenstream.app
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -24,26 +25,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 
-private val requiredPermissions = arrayOf(
-    Manifest.permission.CAMERA,
-    Manifest.permission.RECORD_AUDIO,
-)
-
 @Composable
 fun PermissionGate(content: @Composable () -> Unit) {
     val context = LocalContext.current
+    val permissions = remember { requiredPermissions() }
     var permissionsGranted by remember {
-        mutableStateOf(hasRequiredPermissions(context))
+        mutableStateOf(hasRequiredPermissions(context, permissions))
     }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
-        permissionsGranted = hasRequiredPermissions(context)
+        permissionsGranted = hasRequiredPermissions(context, permissions)
     }
 
     LaunchedEffect(Unit) {
         if (!permissionsGranted) {
-            permissionLauncher.launch(requiredPermissions)
+            permissionLauncher.launch(permissions)
         }
     }
 
@@ -62,7 +59,7 @@ fun PermissionGate(content: @Composable () -> Unit) {
                 style = MaterialTheme.typography.bodyLarge,
             )
             Button(
-                onClick = { permissionLauncher.launch(requiredPermissions) },
+                onClick = { permissionLauncher.launch(permissions) },
                 modifier = Modifier.padding(top = 16.dp),
             ) {
                 Text("Grant permissions")
@@ -71,7 +68,15 @@ fun PermissionGate(content: @Composable () -> Unit) {
     }
 }
 
-private fun hasRequiredPermissions(context: Context): Boolean =
-    requiredPermissions.all { permission ->
+private fun requiredPermissions(): Array<String> = buildList {
+    add(Manifest.permission.CAMERA)
+    add(Manifest.permission.RECORD_AUDIO)
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    }
+}.toTypedArray()
+
+private fun hasRequiredPermissions(context: Context, permissions: Array<String>): Boolean =
+    permissions.all { permission ->
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
     }
