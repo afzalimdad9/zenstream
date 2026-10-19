@@ -12,7 +12,7 @@ A native multi-platform starter for a Vidyst-style live production studio.
 ## Current scope
 The first capture milestone adds a live camera preview and microphone-level meter to all five native apps. Android waits for both camera and microphone permissions before mounting the studio.
 
-Android records camera and microphone output to `Movies/ZenStream`; Windows records to its local ZenStream recordings folder; Linux records to `~/Videos/ZenStream`; macOS records MP4 files in its temporary directory; iOS records to its `ZenStream` Documents folder, available from the Files app.
+Android records camera and microphone output to `Movies/ZenStream`; Windows records to its local ZenStream recordings folder; Linux records to `~/Videos/ZenStream`; macOS and iOS export MP4 recordings to their temporary directories.
 
 This is not yet a full streaming product: scene composition, encoding, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
 
