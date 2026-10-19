@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>ZenStream uses the camera to show your live preview.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>ZenStream uses the microphone to measure your live audio level.</string>
+</dict>
+</plist>
