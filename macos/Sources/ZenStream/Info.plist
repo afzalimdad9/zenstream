@@ -5,6 +5,6 @@
     <key>NSCameraUsageDescription</key>
     <string>ZenStream uses the camera to show your live preview.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>ZenStream uses the microphone to measure your live audio level.</string>
+    <string>ZenStream uses the microphone to meter audio and record your studio sessions.</string>
 </dict>
 </plist>
