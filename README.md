@@ -14,7 +14,7 @@ The first capture milestone adds a live camera preview and microphone-level mete
 
 Android records camera and microphone output to `Movies/ZenStream`; Windows records to its local ZenStream recordings folder; Linux records to `~/Videos/ZenStream`; macOS and iOS export MP4 recordings to their temporary directories.
 
-Android composes a camera layer with a studio label in horizontal or vertical output, including the recorded video. Linux composes a labeled camera preview in horizontal or vertical output and records the composition with microphone audio to MP4. Windows has a native preview label and aspect-ratio toggle, but recording still captures the raw camera feed until its Win2D output path is added. Recorded composition on Windows, composition on macOS/iOS, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
+Android and Linux compose a camera layer with a studio label in horizontal or vertical output, including the recorded video. macOS now composes and records the labeled camera output with microphone audio to MP4; iOS composition is still in progress. Windows has a native preview label and aspect-ratio toggle, but recording still captures the raw camera feed until its Win2D output path is added. Recorded composition on Windows, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
 
 ## Build automation
 Push to `main`, open a pull request, or run **Native builds** manually from GitHub Actions. Platform workflows run on the appropriate hosted runners and upload available build artifacts.
