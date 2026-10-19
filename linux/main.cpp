@@ -2,14 +2,21 @@
 #include <QAudioBuffer>
 #include <QAudioDevice>
 #include <QAudioFormat>
+#include <QAudioInput>
 #include <QAudioSource>
 #include <QCamera>
+#include <QDateTime>
+#include <QDir>
+#include <QHBoxLayout>
 #include <QIODevice>
 #include <QLabel>
 #include <QMainWindow>
 #include <QMediaCaptureSession>
 #include <QMediaDevices>
+#include <QMediaRecorder>
 #include <QProgressBar>
+#include <QPushButton>
+#include <QUrl>
 #include <QVideoWidget>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -93,13 +100,26 @@ int main(int argc, char *argv[])
     status->setWordWrap(true);
     layout->addWidget(status);
 
+    auto *recordButton = new QPushButton("Record", central);
+    auto *stopButton = new QPushButton("Stop", central);
+    stopButton->setEnabled(false);
+    auto *recordingControls = new QWidget(central);
+    auto *recordingLayout = new QHBoxLayout(recordingControls);
+    recordingLayout->setContentsMargins(0, 0, 0, 0);
+    recordingLayout->addWidget(recordButton);
+    recordingLayout->addWidget(stopButton);
+    layout->addWidget(recordingControls);
+
+    auto *captureSession = new QMediaCaptureSession(&window);
+    auto *recorder = new QMediaRecorder(&window);
+    captureSession->setRecorder(recorder);
+    captureSession->setVideoOutput(preview);
+
     if (QMediaDevices::videoInputs().isEmpty()) {
         status->setText("No camera device was found.");
     } else {
         auto *camera = new QCamera(QMediaDevices::defaultVideoInput(), &window);
-        auto *captureSession = new QMediaCaptureSession(&window);
         captureSession->setCamera(camera);
-        captureSession->setVideoOutput(preview);
         QObject::connect(camera, &QCamera::errorOccurred, &window,
             [status](QCamera::Error, const QString &errorString) {
                 status->setText(QString("Camera unavailable: %1").arg(errorString));
@@ -109,28 +129,94 @@ int main(int argc, char *argv[])
 
     const QAudioDevice inputDevice = QMediaDevices::defaultAudioInput();
     const QAudioFormat format = inputDevice.preferredFormat();
+    auto *audioInput = new QAudioInput(inputDevice, &window);
+    captureSession->setAudioInput(audioInput);
+
+    auto *audioSource = new QAudioSource(inputDevice, format, &window);
+    bool microphoneMeterRunning = false;
+    auto startMicrophoneMeter = [&]() {
+        if (microphoneMeterRunning || inputDevice.isNull() || !format.isValid()) {
+            return;
+        }
+
+        QIODevice *audioStream = audioSource->start();
+        if (audioStream == nullptr) {
+            status->setText("Microphone capture could not be started.");
+            return;
+        }
+
+        microphoneMeterRunning = true;
+        QObject::connect(audioStream, &QIODevice::readyRead, audioStream,
+            [audioStream, format, microphoneLevel]() {
+                const QAudioBuffer buffer(audioStream->readAll(), format);
+                microphoneLevel->setValue(qRound(calculateRms(buffer) * 100));
+            });
+    };
+    auto stopMicrophoneMeter = [&]() {
+        if (!microphoneMeterRunning) {
+            return;
+        }
+        audioSource->stop();
+        microphoneMeterRunning = false;
+    };
+
     if (inputDevice.isNull() || !format.isValid()) {
         status->setText(status->text().isEmpty()
             ? "No microphone device was found."
             : status->text() + "\nNo microphone device was found.");
     } else {
-        auto *audioSource = new QAudioSource(inputDevice, format, &window);
-        QIODevice *audioInput = audioSource->start();
-        if (audioInput == nullptr) {
-            status->setText(status->text().isEmpty()
-                ? "Microphone capture could not be started."
-                : status->text() + "\nMicrophone capture could not be started.");
-        } else {
-            QObject::connect(audioInput, &QIODevice::readyRead, &window,
-                [audioInput, format, microphoneLevel]() {
-                    const QAudioBuffer buffer(audioInput->readAll(), format);
-                    microphoneLevel->setValue(qRound(calculateRms(buffer) * 100));
-                });
-        }
+        startMicrophoneMeter();
     }
 
+    bool recordingActive = false;
+    QObject::connect(recorder, &QMediaRecorder::recorderStateChanged, &window,
+        [&, status, recordButton, stopButton](QMediaRecorder::RecorderState state) {
+            if (state == QMediaRecorder::RecordingState) {
+                recordingActive = true;
+                recordButton->setEnabled(false);
+                stopButton->setEnabled(true);
+            } else if (state == QMediaRecorder::StoppedState) {
+                const bool wasRecording = recordingActive;
+                recordingActive = false;
+                recordButton->setEnabled(true);
+                stopButton->setEnabled(false);
+                if (wasRecording) {
+                    status->setText("Recording saved to " + recorder->outputLocation().toLocalFile());
+                }
+                startMicrophoneMeter();
+            }
+        });
+    QObject::connect(recorder, &QMediaRecorder::errorOccurred, &window,
+        [&, status, recordButton, stopButton](QMediaRecorder::Error, const QString &errorString) {
+            status->setText(QString("Recording failed: %1").arg(errorString));
+            recordingActive = false;
+            recordButton->setEnabled(true);
+            stopButton->setEnabled(false);
+            startMicrophoneMeter();
+        });
+
+    QObject::connect(recordButton, &QPushButton::clicked, &window, [&]() {
+        const QString recordingDirectory = QDir::home().filePath("Videos/ZenStream");
+        if (!QDir().mkpath(recordingDirectory)) {
+            status->setText("Could not create ~/Videos/ZenStream.");
+            return;
+        }
+
+        const QString fileName = QString("ZenStream-%1.mp4")
+            .arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss-zzz"));
+        const QString outputPath = QDir(recordingDirectory).filePath(fileName);
+        recorder->setOutputLocation(QUrl::fromLocalFile(outputPath));
+        stopMicrophoneMeter();
+        recordButton->setEnabled(false);
+        status->setText(QString("Starting recording to %1").arg(outputPath));
+        recorder->record();
+    });
+    QObject::connect(stopButton, &QPushButton::clicked, &window, [recorder]() {
+        recorder->stop();
+    });
+
     window.setCentralWidget(central);
-    window.resize(760, 560);
+    window.resize(760, 600);
     window.setWindowTitle("ZenStream");
     window.show();
     return app.exec();
