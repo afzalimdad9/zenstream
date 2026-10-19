@@ -14,7 +14,7 @@ The first capture milestone adds a live camera preview and microphone-level mete
 
 Android records camera and microphone output to `Movies/ZenStream`; Windows records to its local ZenStream recordings folder; Linux records to `~/Videos/ZenStream`; macOS and iOS export MP4 recordings to their temporary directories.
 
-Android composes a camera layer with a studio label in horizontal or vertical output, including the recorded video. Windows now has a native preview label and aspect-ratio toggle, but recording still captures the raw camera feed until its Win2D output path is added. Recorded composition on Windows and composition on Linux/macOS/iOS, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
+Android composes a camera layer with a studio label in horizontal or vertical output, including the recorded video. Linux composes a labeled camera preview in horizontal or vertical output and records the composition with microphone audio to MP4. Windows has a native preview label and aspect-ratio toggle, but recording still captures the raw camera feed until its Win2D output path is added. Recorded composition on Windows, composition on macOS/iOS, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
 
 ## Build automation
 Push to `main`, open a pull request, or run **Native builds** manually from GitHub Actions. Platform workflows run on the appropriate hosted runners and upload available build artifacts.
@@ -28,7 +28,7 @@ Push to `main`, open a pull request, or run **Native builds** manually from GitH
 ## Local prerequisites
 - Windows: Visual Studio 2022 with the .NET desktop workload and Windows App SDK support.
 - Android: JDK 17+ and Android SDK; open `android/` in Android Studio or build with Gradle.
-- Linux: Qt 6 Widgets, Multimedia, MultimediaWidgets, and CMake.
+- Linux: Qt 6 Widgets and Multimedia, GStreamer development libraries and plugins, and CMake.
 - macOS/iOS: Xcode on macOS. iOS simulator builds require a macOS runner.
 
 ## Release notes
