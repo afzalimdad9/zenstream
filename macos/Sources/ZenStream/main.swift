@@ -85,17 +85,10 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureFileOutputRe
                 return
             }
 
-            guard self.movieOutput.availableOutputFileTypes.contains(.mp4) else {
-                self.removeRecordingAudioInput()
-                self.resumeMicrophoneMeter()
-                self.updateRecordingStatus("Recording unavailable: MP4 output is not supported")
-                return
-            }
-
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
             let outputURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("ZenStream-\(formatter.string(from: Date())).mp4")
+                .appendingPathComponent("ZenStream-\(formatter.string(from: Date())).mov")
             self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
             self.updateRecordingStatus("Starting recording to \(outputURL.path)")
         }
@@ -135,14 +128,48 @@ final class CaptureController: NSObject, ObservableObject, AVCaptureFileOutputRe
                 self.stopSessionAfterRecording = false
             }
 
-            DispatchQueue.main.async {
-                self.isRecording = false
-                if let error {
-                    self.recordingStatus = "Recording failed: \(error.localizedDescription)"
-                } else {
-                    self.recordingStatus = "Recording saved to \(outputFileURL.path)"
-                }
+            if let error {
+                self.finishRecording(with: "Recording failed: \(error.localizedDescription)")
+            } else {
+                self.exportRecordingToMP4(from: outputFileURL)
             }
+        }
+    }
+
+    private func exportRecordingToMP4(from sourceURL: URL) {
+        let outputURL = sourceURL.deletingPathExtension().appendingPathExtension("mp4")
+        guard let exportSession = AVAssetExportSession(
+            asset: AVURLAsset(url: sourceURL),
+            presetName: AVAssetExportPresetHighestQuality
+        ) else {
+            finishRecording(with: "Recording failed: MP4 export could not be created")
+            return
+        }
+
+        exportSession.outputURL = outputURL
+        exportSession.outputFileType = .mp4
+        exportSession.shouldOptimizeForNetworkUse = true
+        updateRecordingStatus("Converting recording to MP4...")
+        exportSession.exportAsynchronously { [weak self] in
+            let status: String
+            switch exportSession.status {
+            case .completed:
+                status = "Recording saved to \(outputURL.path)"
+            case .failed:
+                status = "MP4 export failed: \(exportSession.error?.localizedDescription ?? "unknown error")"
+            case .cancelled:
+                status = "MP4 export was cancelled"
+            default:
+                status = "MP4 export did not complete (status: \(exportSession.status.rawValue))"
+            }
+            self?.finishRecording(with: status)
+        }
+    }
+
+    private func finishRecording(with status: String) {
+        DispatchQueue.main.async {
+            self.isRecording = false
+            self.recordingStatus = status
         }
     }
 
