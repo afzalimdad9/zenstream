@@ -10,7 +10,9 @@ A native multi-platform starter for a Vidyst-style live production studio.
 - iOS: Swift / SwiftUI
 
 ## Current scope
-This repository contains minimal native app scaffolds and GitHub Actions workflows for platform build checks. It is not yet a full streaming product: capture, scene composition, encoding, RTMP output, multistreaming, guest rooms, and unified chat are future milestones.
+The first capture milestone adds a live camera preview and microphone-level meter to all five native apps. Android waits for both camera and microphone permissions before mounting the studio.
+
+This is not yet a full streaming product: scene composition, local recording, encoding, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
 
 ## Build automation
 Push to `main`, open a pull request, or run **Native builds** manually from GitHub Actions. Platform workflows run on the appropriate hosted runners and upload available build artifacts.
@@ -24,7 +26,7 @@ Push to `main`, open a pull request, or run **Native builds** manually from GitH
 ## Local prerequisites
 - Windows: Visual Studio 2022 with the .NET desktop workload and Windows App SDK support.
 - Android: JDK 17+ and Android SDK; open `android/` in Android Studio or build with Gradle.
-- Linux: Qt 6 Widgets and CMake.
+- Linux: Qt 6 Widgets, Multimedia, MultimediaWidgets, and CMake.
 - macOS/iOS: Xcode on macOS. iOS simulator builds require a macOS runner.
 
 ## Release notes
