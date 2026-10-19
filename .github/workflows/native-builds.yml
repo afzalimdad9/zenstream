@@ -70,7 +70,7 @@ jobs:
             macos/.build/
             ios/DerivedData/Build/Products/Debug-iphonesimulator/ZenStream.app/
 
-    windows:
+  windows:
     name: Windows (WinUI 3 / .NET)
     runs-on: windows-2022
     steps:
