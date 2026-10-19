@@ -2,16 +2,28 @@ import AVFoundation
 import SwiftUI
 import UIKit
 
-final class CaptureController: ObservableObject {
+final class CaptureController: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate {
     let session = AVCaptureSession()
     @Published var micLevel = 0.0
     @Published var cameraStatus = "Camera: waiting for permission"
     @Published var microphoneStatus = "Microphone: waiting for permission"
+    @Published var recordingStatus = "Recording: idle"
+    @Published var canRecord = false
+    @Published var isRecording = false
 
     private let sessionQueue = DispatchQueue(label: "com.zenstream.camera")
     private let audioEngine = AVAudioEngine()
+    private let movieOutput = AVCaptureMovieFileOutput()
     private var hasStarted = false
     private var audioTapInstalled = false
+    private var microphonePermissionGranted = false
+    private var movieOutputReady = false
+    private var recordingAudioInput: AVCaptureDeviceInput?
+    private var stopSessionAfterRecording = false
+
+    override init() {
+        super.init()
+    }
 
     func start() {
         guard !hasStarted else { return }
@@ -34,6 +46,10 @@ final class CaptureController: ObservableObject {
                 self.updateMicrophoneStatus("Microphone access denied")
                 return
             }
+            self.sessionQueue.async {
+                self.microphonePermissionGranted = true
+                self.updateRecordAvailability()
+            }
             self.startMicrophoneMeter()
         }
     }
@@ -41,7 +57,10 @@ final class CaptureController: ObservableObject {
     func stop() {
         hasStarted = false
         sessionQueue.async {
-            if self.session.isRunning {
+            if self.movieOutput.isRecording {
+                self.stopSessionAfterRecording = true
+                self.movieOutput.stopRecording()
+            } else if self.session.isRunning {
                 self.session.stopRunning()
             }
         }
@@ -50,6 +69,96 @@ final class CaptureController: ObservableObject {
             audioTapInstalled = false
         }
         audioEngine.stop()
+    }
+
+    func startRecording() {
+        sessionQueue.async {
+            guard self.session.isRunning, self.movieOutputReady,
+                  self.microphonePermissionGranted, !self.movieOutput.isRecording else {
+                return
+            }
+
+            self.audioEngine.stop()
+            guard self.addRecordingAudioInput() else {
+                self.resumeMicrophoneMeter()
+                self.updateRecordingStatus("Recording unavailable: microphone input could not be added")
+                return
+            }
+
+            do {
+                guard let documentsDirectory = FileManager.default.urls(
+                    for: .documentDirectory,
+                    in: .userDomainMask
+                ).first else {
+                    throw CocoaError(.fileNoSuchFile)
+                }
+                let directory = documentsDirectory.appendingPathComponent(
+                    "ZenStream",
+                    isDirectory: true
+                )
+                try FileManager.default.createDirectory(
+                    at: directory,
+                    withIntermediateDirectories: true,
+                    attributes: nil
+                )
+
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
+                let outputURL = directory
+                    .appendingPathComponent("ZenStream-\(formatter.string(from: Date())).mov")
+                self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+                self.updateRecordingStatus("Starting recording to \(outputURL.path)")
+            } catch {
+                self.removeRecordingAudioInput()
+                self.resumeMicrophoneMeter()
+                self.updateRecordingStatus("Recording failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func stopRecording() {
+        sessionQueue.async {
+            guard self.movieOutput.isRecording else { return }
+            self.movieOutput.stopRecording()
+        }
+    }
+
+    func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didStartRecordingTo fileURL: URL,
+        from connections: [AVCaptureConnection]
+    ) {
+        DispatchQueue.main.async {
+            self.isRecording = true
+            self.recordingStatus = "Recording to \(fileURL.path)"
+        }
+    }
+
+    func fileOutput(
+        _ output: AVCaptureFileOutput,
+        didFinishRecordingTo outputFileURL: URL,
+        from connections: [AVCaptureConnection],
+        error: Error?
+    ) {
+        sessionQueue.async {
+            self.removeRecordingAudioInput()
+            if self.hasStarted {
+                self.resumeMicrophoneMeter()
+            }
+            if self.stopSessionAfterRecording {
+                self.session.stopRunning()
+                self.stopSessionAfterRecording = false
+            }
+
+            DispatchQueue.main.async {
+                self.isRecording = false
+                if let error {
+                    self.recordingStatus = "Recording failed: \(error.localizedDescription)"
+                } else {
+                    self.recordingStatus = "Recording saved to \(outputFileURL.path)"
+                }
+            }
+        }
     }
 
     private func configureCamera() {
@@ -65,18 +174,67 @@ final class CaptureController: ObservableObject {
         do {
             let input = try AVCaptureDeviceInput(device: device)
             session.beginConfiguration()
-            defer { session.commitConfiguration() }
 
             guard session.canAddInput(input) else {
+                session.commitConfiguration()
                 updateCameraStatus("Camera input could not be added")
                 return
             }
             session.addInput(input)
+            guard session.canAddOutput(movieOutput) else {
+                session.commitConfiguration()
+                updateCameraStatus("Camera recording output could not be added")
+                return
+            }
+            session.addOutput(movieOutput)
+            movieOutputReady = true
             session.sessionPreset = .high
+            session.commitConfiguration()
             session.startRunning()
             updateCameraStatus("Camera preview active")
+            updateRecordAvailability()
         } catch {
             updateCameraStatus("Camera unavailable: \(error.localizedDescription)")
+        }
+    }
+
+    private func addRecordingAudioInput() -> Bool {
+        guard let device = AVCaptureDevice.default(for: .audio) else {
+            return false
+        }
+
+        do {
+            let input = try AVCaptureDeviceInput(device: device)
+            session.beginConfiguration()
+            guard session.canAddInput(input) else {
+                session.commitConfiguration()
+                return false
+            }
+            session.addInput(input)
+            session.commitConfiguration()
+            recordingAudioInput = input
+            return true
+        } catch {
+            updateRecordingStatus("Recording failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func removeRecordingAudioInput() {
+        guard let input = recordingAudioInput else { return }
+        session.beginConfiguration()
+        session.removeInput(input)
+        session.commitConfiguration()
+        recordingAudioInput = nil
+    }
+
+    private func resumeMicrophoneMeter() {
+        guard hasStarted, audioTapInstalled else { return }
+        do {
+            try audioEngine.start()
+            updateMicrophoneStatus("Microphone meter active")
+        } catch {
+            updateMicrophoneStatus("Microphone unavailable: \(error.localizedDescription)")
         }
     }
 
@@ -129,6 +287,20 @@ final class CaptureController: ObservableObject {
     private func updateMicrophoneStatus(_ status: String) {
         DispatchQueue.main.async {
             self.microphoneStatus = status
+        }
+    }
+
+    private func updateRecordingStatus(_ status: String) {
+        DispatchQueue.main.async {
+            self.recordingStatus = status
+        }
+    }
+
+    private func updateRecordAvailability() {
+        let available = hasStarted && session.isRunning &&
+            movieOutputReady && microphonePermissionGranted
+        DispatchQueue.main.async {
+            self.canRecord = available
         }
     }
 }
@@ -189,6 +361,15 @@ private struct StudioView: View {
             Text(capture.cameraStatus)
                 .foregroundStyle(.secondary)
             Text(capture.microphoneStatus)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Record") { capture.startRecording() }
+                    .disabled(!capture.canRecord || capture.isRecording)
+                Button("Stop") { capture.stopRecording() }
+                    .disabled(!capture.isRecording)
+            }
+            Text(capture.recordingStatus)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
