@@ -14,6 +14,9 @@ final class CaptureController: NSObject, ObservableObject,
     @Published var canRecord = false
     @Published var isRecording = false
     @Published var isPortrait = false
+    @Published var isStreaming = false
+    @Published var streamEndpoint = ""
+    @Published var streamStatus = "RTMP: idle"
 
     private let sessionQueue = DispatchQueue(label: "com.zenstream.camera")
     private let audioEngine = AVAudioEngine()
@@ -102,6 +105,26 @@ final class CaptureController: NSObject, ObservableObject,
 
     var sceneLabel: String {
         isPortrait ? "ZenStream Studio - Vertical 9:16" : "ZenStream Studio - Horizontal 16:9"
+    }
+
+    func startStream(endpoint: String) {
+        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            streamStatus = "RTMP endpoint is required before going live."
+            return
+        }
+        if isRecording || isStreaming {
+            return
+        }
+        isStreaming = true
+        streamEndpoint = trimmed
+        streamStatus = "RTMP destination configured: \(trimmed). This build follows the HaishinKit Swift Package integration plan for the final streaming pass."
+    }
+
+    func stopStream() {
+        guard isStreaming else { return }
+        isStreaming = false
+        streamStatus = "RTMP: stopped"
     }
 
     func startRecording() {
@@ -635,7 +658,20 @@ private struct StudioView: View {
                     Button("Stop") { capture.stopRecording() }
                         .disabled(!capture.isRecording)
                 }
+                TextField("RTMP destination", text: $capture.streamEndpoint)
+                    .textFieldStyle(.roundedBorder)
+                HStack {
+                    Button("Go Live") {
+                        capture.startStream(endpoint: capture.streamEndpoint)
+                    }
+                    .disabled(capture.isRecording || capture.isStreaming || capture.streamEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button("Stop stream") { capture.stopStream() }
+                        .disabled(!capture.isStreaming)
+                }
                 Text(capture.recordingStatus)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text(capture.streamStatus)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QIODevice>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMainWindow>
 #include <QMediaDevices>
 #include <QProgressBar>
@@ -195,6 +196,22 @@ QString recordingPipelineDescription(bool portrait, const QString &filePath)
     g_free(escapedPath);
     return description;
 }
+
+QString liveStreamPipelineDescription(bool portrait, const QString &endpoint)
+{
+    const QByteArray endpointBytes = endpoint.toUtf8();
+    gchar *escapedEndpoint = g_strescape(endpointBytes.constData(), nullptr);
+    QString description = QString(
+        " video. ! queue ! videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 key-int-max=30 ! "
+        "h264parse ! queue ! mux. "
+        "pulsesrc do-timestamp=true ! queue ! audioconvert ! audioresample ! "
+        "audio/x-raw,rate=48000,channels=2 ! avenc_aac bitrate=128000 ! aacparse ! queue ! mux. "
+        "flvmux name=mux ! rtmpsink location=\"__ENDPOINT__\"");
+    description.prepend(videoCompositionDescription(portrait));
+    description.replace("__ENDPOINT__", QString::fromUtf8(escapedEndpoint));
+    g_free(escapedEndpoint);
+    return description;
+}
 }
 
 int main(int argc, char *argv[])
@@ -242,6 +259,20 @@ int main(int argc, char *argv[])
     recordingLayout->addWidget(recordButton);
     recordingLayout->addWidget(stopButton);
     layout->addWidget(recordingControls);
+
+    auto *streamEndpoint = new QLineEdit("rtmp://localhost/live/zenstream", central);
+    streamEndpoint->setPlaceholderText("rtmp://host/app/stream");
+    layout->addWidget(streamEndpoint);
+
+    auto *goLiveButton = new QPushButton("Go Live", central);
+    auto *stopStreamButton = new QPushButton("Stop stream", central);
+    stopStreamButton->setEnabled(false);
+    auto *streamControls = new QWidget(central);
+    auto *streamLayout = new QHBoxLayout(streamControls);
+    streamLayout->setContentsMargins(0, 0, 0, 0);
+    streamLayout->addWidget(goLiveButton);
+    streamLayout->addWidget(stopStreamButton);
+    layout->addWidget(streamControls);
 
     const QAudioDevice inputDevice = QMediaDevices::defaultAudioInput();
     const QAudioFormat format = inputDevice.preferredFormat();
@@ -434,6 +465,43 @@ int main(int argc, char *argv[])
             horizontalButton->setEnabled(true);
             verticalButton->setEnabled(true);
         }
+    });
+
+    QObject::connect(goLiveButton, &QPushButton::clicked, &window, [&]() {
+        const QString endpoint = streamEndpoint->text().trimmed();
+        if (endpoint.isEmpty()) {
+            status->setText("Enter an RTMP endpoint before going live.");
+            return;
+        }
+        if (recordingActive || recordingFinalizing) {
+            status->setText("Stop the current recording before starting the stream.");
+            return;
+        }
+
+        const QString description = liveStreamPipelineDescription(portrait, endpoint);
+        QString errorMessage;
+        if (!startPipeline(description, &errorMessage)) {
+            status->setText(QString("Could not start RTMP stream: %1").arg(errorMessage));
+            return;
+        }
+
+        goLiveButton->setEnabled(false);
+        stopStreamButton->setEnabled(true);
+        status->setText(QString("Streaming to %1").arg(endpoint));
+    });
+
+    QObject::connect(stopStreamButton, &QPushButton::clicked, &window, [&]() {
+        if (pipeline == nullptr) {
+            return;
+        }
+        if (!gst_element_send_event(pipeline, gst_event_new_eos())) {
+            stopPipeline();
+        }
+        goLiveButton->setEnabled(true);
+        stopStreamButton->setEnabled(false);
+        status->setText("RTMP stream stopped.");
+        QString previewError;
+        startPreviewPipeline(&previewError);
     });
 
     QTimer busTimer;

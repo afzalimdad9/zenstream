@@ -36,6 +36,8 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.pedro.common.ConnectChecker
+import com.pedro.library.rtmp.RtmpCamera2
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -56,6 +58,13 @@ data class RecordingStatus(
     val errorMessage: String? = null,
 )
 
+data class StreamStatus(
+    val isStarting: Boolean = false,
+    val isStreaming: Boolean = false,
+    val endpoint: String = "",
+    val errorMessage: String? = null,
+)
+
 class CameraCaptureService(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
@@ -70,6 +79,7 @@ class CameraCaptureService(
     private var cameraProvider: ProcessCameraProvider? = null
     private var overlayEffect: OverlayEffect? = null
     private var overlayHandlerThread: HandlerThread? = null
+    private var rtmpStream: RtmpCamera2? = null
     @Volatile private var isPortrait = false
     private var isStopped = false
 
@@ -84,6 +94,9 @@ class CameraCaptureService(
 
     private val _recordingStatus = MutableStateFlow(RecordingStatus())
     val recordingStatus: StateFlow<RecordingStatus> = _recordingStatus
+
+    private val _streamStatus = MutableStateFlow(StreamStatus())
+    val streamStatus: StateFlow<StreamStatus> = _streamStatus
 
     fun start(previewView: PreviewView) {
         isStopped = false
@@ -109,6 +122,7 @@ class CameraCaptureService(
 
     fun stop() {
         isStopped = true
+        stopStreaming()
         activeRecording?.stop()
         activeRecording = null
         stopMicMeter()
@@ -120,6 +134,85 @@ class CameraCaptureService(
         overlayHandlerThread = null
         cameraProvider = null
         previewView = null
+    }
+
+    fun startStreaming(endpoint: String) {
+        val normalized = endpoint.trim()
+        if (normalized.isEmpty()) {
+            _streamStatus.value = StreamStatus(errorMessage = "Enter an RTMP endpoint before going live.")
+            return
+        }
+        if (_streamStatus.value.isStarting || _streamStatus.value.isStreaming) return
+
+        _streamStatus.value = StreamStatus(isStarting = true, endpoint = normalized)
+        rtmpStream = RtmpCamera2(context.applicationContext, object : ConnectChecker {
+            override fun onConnectionStarted(url: String) = Unit
+            override fun onConnectionSuccess() {
+                _streamStatus.value = StreamStatus(isStreaming = true, endpoint = normalized)
+            }
+            override fun onConnectionFailed(reason: String) {
+                _streamStatus.value = StreamStatus(
+                    endpoint = normalized,
+                    errorMessage = "Stream failed: $reason",
+                )
+                rtmpStream = null
+            }
+            override fun onDisconnect() {
+                _streamStatus.value = StreamStatus(endpoint = normalized)
+                rtmpStream = null
+            }
+            override fun onAuthError() {
+                _streamStatus.value = StreamStatus(
+                    endpoint = normalized,
+                    errorMessage = "Stream authentication failed.",
+                )
+                rtmpStream = null
+            }
+            override fun onAuthSuccess() = Unit
+        })
+
+        scope.launch {
+            try {
+                val videoPrepared = rtmpStream?.prepareVideo(
+                    1280,
+                    720,
+                    30,
+                    1200 * 1024,
+                    if (isPortrait) 90 else 0,
+                ) ?: false
+                val audioPrepared = rtmpStream?.prepareAudio(
+                    64 * 1024,
+                    32_000,
+                    true,
+                    true,
+                    true,
+                ) ?: false
+                if (!videoPrepared || !audioPrepared) {
+                    _streamStatus.value = StreamStatus(
+                        endpoint = normalized,
+                        errorMessage = "RTMP encoder preparation failed.",
+                    )
+                    stopStreaming()
+                    return@launch
+                }
+                rtmpStream?.startStream(normalized)
+                _streamStatus.value = StreamStatus(isStreaming = true, endpoint = normalized)
+            } catch (exception: Exception) {
+                _streamStatus.value = StreamStatus(
+                    endpoint = normalized,
+                    errorMessage = "Could not start stream: ${exception.localizedMessage}",
+                )
+                stopStreaming()
+            }
+        }
+    }
+
+    fun stopStreaming() {
+        val currentUrl = _streamStatus.value.endpoint
+        rtmpStream?.stopStream()
+        rtmpStream?.release()
+        rtmpStream = null
+        _streamStatus.value = StreamStatus(endpoint = currentUrl)
     }
 
     fun startRecording() {

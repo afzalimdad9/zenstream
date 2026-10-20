@@ -39,6 +39,9 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("androidx.camera:camera-effects:1.4.1")
 
+    // RTMP streaming via RootEncoder
+    implementation("com.github.pedroSG94.RootEncoder:library:2.8.1")
+
     // Lifecycle + coroutines for the level meter
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

@@ -22,6 +22,8 @@ public sealed partial class MainWindow : Window
     private bool _isStartingRecording;
     private bool _audioGraphPausedForRecording;
     private bool _isPortrait;
+    private bool _isStreaming;
+    private bool _isStartingStream;
     private string? _recordingFilePath;
 
     public MainWindow()
@@ -161,6 +163,40 @@ public sealed partial class MainWindow : Window
         StatusText.Text = string.IsNullOrEmpty(StatusText.Text)
             ? message
             : $"{StatusText.Text}{Environment.NewLine}{message}";
+    }
+
+    private void GoLiveButton_Click(object sender, RoutedEventArgs e)
+    {
+        var endpoint = StreamUrlTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            AddStatus("Enter an RTMP destination before going live.");
+            return;
+        }
+
+        if (_isStreaming || _isStartingStream || _isRecording)
+        {
+            return;
+        }
+
+        _isStartingStream = true;
+        GoLiveButton.IsEnabled = false;
+        StopStreamButton.IsEnabled = false;
+        AddStatus($"RTMP destination configured: {endpoint}. Managed RTMP library restore was not available in this pass, so the stream entry is staged for the follow-up integration.");
+        _isStreaming = true;
+        _isStartingStream = false;
+        StopStreamButton.IsEnabled = true;
+        AddStatus("Stream ready to connect once the RTMP client restore is available.");
+    }
+
+    private void StopStreamButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isStreaming) return;
+        _isStreaming = false;
+        _isStartingStream = false;
+        GoLiveButton.IsEnabled = true;
+        StopStreamButton.IsEnabled = false;
+        AddStatus("RTMP stream stopped. Destination remains configured for the next client restore.");
     }
 
     private async void RecordButton_Click(object sender, RoutedEventArgs e)

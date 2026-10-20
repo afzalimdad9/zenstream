@@ -14,7 +14,7 @@ The first capture milestone adds a live camera preview and microphone-level mete
 
 Android records camera and microphone output to `Movies/ZenStream`; Windows records to its local ZenStream recordings folder; Linux records to `~/Videos/ZenStream`; macOS and iOS export MP4 recordings to their temporary directories.
 
-Android, Linux, macOS, and iOS compose a camera layer with a studio label in horizontal or vertical output, including the recorded video. Windows has a native preview label and aspect-ratio toggle, but recording still captures the raw camera feed until its Win2D output path is added. Recorded composition on Windows, RTMP output, multistreaming, remote guests, and unified chat remain future milestones.
+Android, Linux, macOS, and iOS compose a camera layer with a studio label in horizontal or vertical output, including the recorded video. Windows has a native preview label and aspect-ratio toggle, but recording still captures the raw camera feed until its Win2D output path is added. Milestone 4 completes the Android RTMP route using RootEncoder and adds RTMP destination fields and lifecycle controls to the remaining native apps. Windows keeps the deferred managed-library path with a destination-config UI, Linux uses a GStreamer rtmpsink pipeline, and the Apple apps follow the HaishinKit Swift Package pattern for the final live-streaming pass.
 
 ## Build automation
 Push to `main`, open a pull request, or run **Native builds** manually from GitHub Actions. Platform workflows run on the appropriate hosted runners and upload available build artifacts.

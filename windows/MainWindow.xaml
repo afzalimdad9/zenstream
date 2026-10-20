@@ -62,6 +62,10 @@
                     Content="Vertical 9:16"
                     Click="VerticalButton_Click" />
             </StackPanel>
+            <TextBox
+                x:Name="StreamUrlTextBox"
+                Header="RTMP destination"
+                PlaceholderText="rtmp://host/app/stream" />
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <Button
                     x:Name="RecordButton"
@@ -73,6 +77,17 @@
                     Content="Stop"
                     IsEnabled="False"
                     Click="StopButton_Click" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button
+                    x:Name="GoLiveButton"
+                    Content="Go Live"
+                    Click="GoLiveButton_Click" />
+                <Button
+                    x:Name="StopStreamButton"
+                    Content="Stop stream"
+                    IsEnabled="False"
+                    Click="StopStreamButton_Click" />
             </StackPanel>
         </StackPanel>
     </Grid>

@@ -21,8 +21,11 @@ fun StudioScreen(
     val cameraReady by captureService.cameraReady.collectAsState()
     val cameraError by captureService.cameraError.collectAsState()
     val recording by captureService.recordingStatus.collectAsState()
+    val stream by captureService.streamStatus.collectAsState()
     var portrait by remember { mutableStateOf(false) }
+    var streamEndpoint by remember { mutableStateOf("") }
     val isRecording = recording.isStarting || recording.isRecording
+    val isStreaming = stream.isStarting || stream.isStreaming
 
     DisposableEffect(captureService) {
         onDispose { captureService.stop() }
@@ -96,6 +99,16 @@ fun StudioScreen(
             Text("Saved recording to Movies/ZenStream")
         }
 
+        OutlinedTextField(
+            value = streamEndpoint,
+            onValueChange = { streamEndpoint = it },
+            enabled = !isStreaming,
+            label = { Text("RTMP destination") },
+            placeholder = { Text("rtmp://host/app/stream") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(
                 onClick = captureService::startRecording,
@@ -109,7 +122,28 @@ fun StudioScreen(
             ) {
                 Text("Stop")
             }
-            OutlinedButton(onClick = { }, enabled = false) { Text("Stream (later)") }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(
+                onClick = { captureService.startStreaming(streamEndpoint) },
+                enabled = cameraReady && !isStreaming && !isRecording && streamEndpoint.isNotBlank(),
+            ) {
+                Text(if (stream.isStarting) "Connecting..." else "Go Live")
+            }
+            OutlinedButton(
+                onClick = captureService::stopStreaming,
+                enabled = stream.isStreaming,
+            ) {
+                Text("Stop stream")
+            }
+        }
+
+        if (stream.errorMessage != null) {
+            Text(stream.errorMessage, color = MaterialTheme.colorScheme.error)
+        }
+        if (stream.isStreaming) {
+            Text("Live: ${stream.endpoint}")
         }
     }
 }
