@@ -202,11 +202,12 @@ QString liveStreamPipelineDescription(bool portrait, const QString &endpoint)
     const QByteArray endpointBytes = endpoint.toUtf8();
     gchar *escapedEndpoint = g_strescape(endpointBytes.constData(), nullptr);
     QString description = QString(
-        " video. ! queue ! videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 key-int-max=30 ! "
+        " video. ! queue ! autovideosink "
+        "video. ! queue ! videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 key-int-max=30 ! "
         "h264parse ! queue ! mux. "
         "pulsesrc do-timestamp=true ! queue ! audioconvert ! audioresample ! "
         "audio/x-raw,rate=48000,channels=2 ! avenc_aac bitrate=128000 ! aacparse ! queue ! mux. "
-        "flvmux name=mux ! rtmpsink location=\"__ENDPOINT__\"");
+        "flvmux name=mux streamable=true ! rtmpsink sync=false location=\"__ENDPOINT__\"");
     description.prepend(videoCompositionDescription(portrait));
     description.replace("__ENDPOINT__", QString::fromUtf8(escapedEndpoint));
     g_free(escapedEndpoint);
@@ -316,6 +317,8 @@ int main(int argc, char *argv[])
     bool cameraReady = false;
     bool recordingActive = false;
     bool recordingFinalizing = false;
+    bool streamingActive = false;
+    bool streamStopRequested = false;
     QString recordingPath;
 
     auto stopPipeline = [&]() {
@@ -385,7 +388,7 @@ int main(int argc, char *argv[])
     };
 
     auto setOrientation = [&](bool usePortrait) {
-        if (recordingActive || recordingFinalizing || portrait == usePortrait) {
+        if (recordingActive || recordingFinalizing || streamingActive || portrait == usePortrait) {
             return;
         }
         portrait = usePortrait;
@@ -406,7 +409,7 @@ int main(int argc, char *argv[])
         [&]() { setOrientation(true); });
 
     QObject::connect(recordButton, &QPushButton::clicked, &window, [&]() {
-        if (!cameraReady || recordingActive || recordingFinalizing) {
+        if (!cameraReady || recordingActive || recordingFinalizing || streamingActive) {
             status->setText("Camera is not ready to record.");
             return;
         }
@@ -473,35 +476,53 @@ int main(int argc, char *argv[])
             status->setText("Enter an RTMP endpoint before going live.");
             return;
         }
-        if (recordingActive || recordingFinalizing) {
-            status->setText("Stop the current recording before starting the stream.");
+        if (!cameraReady || recordingActive || recordingFinalizing || streamingActive) {
+            status->setText("Camera must be ready and not recording or streaming.");
             return;
         }
 
         const QString description = liveStreamPipelineDescription(portrait, endpoint);
         QString errorMessage;
         if (!startPipeline(description, &errorMessage)) {
+            QString previewError;
+            if (!startPreviewPipeline(&previewError)) {
+                errorMessage += QString("; preview restart failed: %1").arg(previewError);
+            }
             status->setText(QString("Could not start RTMP stream: %1").arg(errorMessage));
             return;
         }
 
+        streamingActive = true;
+        streamStopRequested = false;
         goLiveButton->setEnabled(false);
         stopStreamButton->setEnabled(true);
+        horizontalButton->setEnabled(false);
+        verticalButton->setEnabled(false);
         status->setText(QString("Streaming to %1").arg(endpoint));
     });
 
     QObject::connect(stopStreamButton, &QPushButton::clicked, &window, [&]() {
-        if (pipeline == nullptr) {
+        if (pipeline == nullptr || !streamingActive) {
             return;
         }
-        if (!gst_element_send_event(pipeline, gst_event_new_eos())) {
-            stopPipeline();
-        }
-        goLiveButton->setEnabled(true);
+        streamStopRequested = true;
         stopStreamButton->setEnabled(false);
-        status->setText("RTMP stream stopped.");
-        QString previewError;
-        startPreviewPipeline(&previewError);
+        status->setText("Stopping RTMP stream...");
+        if (!gst_element_send_event(pipeline, gst_event_new_eos())) {
+            streamingActive = false;
+            streamStopRequested = false;
+            stopPipeline();
+            goLiveButton->setEnabled(true);
+            horizontalButton->setEnabled(true);
+            verticalButton->setEnabled(true);
+            QString previewError;
+            if (startPreviewPipeline(&previewError)) {
+                status->setText("RTMP stream stopped.");
+            } else {
+                status->setText(QString("RTMP stream stopped; preview restart failed: %1")
+                    .arg(previewError));
+            }
+        }
     });
 
     QTimer busTimer;
@@ -528,20 +549,29 @@ int main(int argc, char *argv[])
                 gst_message_unref(message);
 
                 const bool failedRecording = recordingActive || recordingFinalizing;
+                const bool failedStream = streamingActive;
                 recordingActive = false;
                 recordingFinalizing = false;
+                streamingActive = false;
+                streamStopRequested = false;
                 stopPipeline();
-                if (failedRecording) {
+                if (failedRecording || failedStream) {
                     startMicrophoneMeter();
                     QString previewError;
+                    const QString failureType = failedRecording
+                        ? QStringLiteral("Recording")
+                        : QStringLiteral("RTMP stream");
                     if (!startPreviewPipeline(&previewError)) {
-                        status->setText(QString("GStreamer failed: %1; preview failed: %2")
-                            .arg(errorText, previewError));
+                        status->setText(QString("%1 failed: %2; preview failed: %3")
+                            .arg(failureType, errorText, previewError));
                     } else {
-                        status->setText(QString("GStreamer failed: %1").arg(errorText));
+                        status->setText(QString("%1 failed: %2")
+                            .arg(failureType, errorText));
                     }
                     horizontalButton->setEnabled(true);
                     verticalButton->setEnabled(true);
+                    goLiveButton->setEnabled(true);
+                    stopStreamButton->setEnabled(false);
                 } else {
                     cameraReady = false;
                     recordButton->setEnabled(false);
@@ -565,6 +595,25 @@ int main(int argc, char *argv[])
                 }
                 horizontalButton->setEnabled(true);
                 verticalButton->setEnabled(true);
+                break;
+            }
+
+            if (streamingActive) {
+                const bool wasRequestedStop = streamStopRequested;
+                streamingActive = false;
+                streamStopRequested = false;
+                stopPipeline();
+                goLiveButton->setEnabled(true);
+                stopStreamButton->setEnabled(false);
+                horizontalButton->setEnabled(true);
+                verticalButton->setEnabled(true);
+                QString previewError;
+                if (startPreviewPipeline(&previewError)) {
+                    status->setText(wasRequestedStop ? "RTMP stream stopped." : "RTMP stream ended.");
+                } else {
+                    status->setText(QString("RTMP stream ended; preview restart failed: %1")
+                        .arg(previewError));
+                }
                 break;
             }
 
