@@ -22,8 +22,6 @@ public sealed partial class MainWindow : Window
     private bool _isStartingRecording;
     private bool _audioGraphPausedForRecording;
     private bool _isPortrait;
-    private bool _isStreaming;
-    private bool _isStartingStream;
     private string? _recordingFilePath;
 
     public MainWindow()
@@ -174,29 +172,20 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (_isStreaming || _isStartingStream || _isRecording)
+        if (_isRecording)
         {
+            AddStatus("Stop the recording before configuring a stream.");
             return;
         }
 
-        _isStartingStream = true;
-        GoLiveButton.IsEnabled = false;
-        StopStreamButton.IsEnabled = false;
-        AddStatus($"RTMP destination configured: {endpoint}. Managed RTMP library restore was not available in this pass, so the stream entry is staged for the follow-up integration.");
-        _isStreaming = true;
-        _isStartingStream = false;
-        StopStreamButton.IsEnabled = true;
-        AddStatus("Stream ready to connect once the RTMP client restore is available.");
+        AddStatus(
+            $"RTMP publishing is not connected on Windows. The destination is retained, " +
+            "but this build has no encoder-compatible RTMP publisher.");
     }
 
     private void StopStreamButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_isStreaming) return;
-        _isStreaming = false;
-        _isStartingStream = false;
-        GoLiveButton.IsEnabled = true;
-        StopStreamButton.IsEnabled = false;
-        AddStatus("RTMP stream stopped. Destination remains configured for the next client restore.");
+        AddStatus("No Windows RTMP stream is active.");
     }
 
     private async void RecordButton_Click(object sender, RoutedEventArgs e)
