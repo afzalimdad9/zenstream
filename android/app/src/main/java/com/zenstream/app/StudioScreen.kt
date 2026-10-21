@@ -139,8 +139,8 @@ fun StudioScreen(
             }
         }
 
-        if (stream.errorMessage != null) {
-            Text(stream.errorMessage, color = MaterialTheme.colorScheme.error)
+        stream.errorMessage?.let { errorMessage ->
+            Text(errorMessage, color = MaterialTheme.colorScheme.error)
         }
         if (stream.isStreaming) {
             Text("Live: ${stream.endpoint}")
